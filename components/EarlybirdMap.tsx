@@ -64,6 +64,7 @@ function MapInit({ center }: { center: [number, number] }) {
     if (!initialized.current) {
       map.setView(center, 14);
       initialized.current = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any)._earlybirdMap = map;
     }
   }, [center, map]);
@@ -72,59 +73,73 @@ function MapInit({ center }: { center: [number, number] }) {
 
 export default function EarlybirdMap({ restaurants, center, bookmarks, interested, onToggleBookmark, onToggleInterested }: MapProps) {
   const [heading, setHeading] = useState<number | null>(null);
-  const [showCompassModal, setShowCompassModal] = useState(false);
+  const [compassEnabled, setCompassEnabled] = useState(false);
   const handleOrientationRef = useRef<((e: DeviceOrientationEvent) => void) | null>(null);
+  const headingRef = useRef<number | null>(null);
 
-  function startCompass() {
-    function handleOrientation(e: DeviceOrientationEvent) {
-      const ios = (e as any).webkitCompassHeading;
-      if (ios != null) setHeading(ios);
-      else if (e.alpha != null) setHeading(360 - e.alpha);
+  function handleOrientation(e: DeviceOrientationEvent) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ios = (e as any).webkitCompassHeading;
+    const newHeading = ios != null ? ios : e.alpha != null ? 360 - e.alpha : null;
+    if (newHeading === null) return;
+    const prev = headingRef.current;
+    if (prev === null || Math.abs(newHeading - prev) >= 5) {
+      headingRef.current = newHeading;
+      setHeading(newHeading);
     }
+  }
+
+  function attachCompass() {
     handleOrientationRef.current = handleOrientation;
+    window.addEventListener("deviceorientation", handleOrientation, true);
+    setCompassEnabled(true);
+    localStorage.setItem('earlybird_compass_enabled', 'true');
+  }
+
+  async function enableCompass() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const DevOrient = DeviceOrientationEvent as any;
     if (typeof DevOrient.requestPermission === "function") {
-      DevOrient.requestPermission().then((result: string) => {
-        if (result === "granted") window.addEventListener("deviceorientation", handleOrientation, true);
-      }).catch(() => {});
+      try {
+        const result = await DevOrient.requestPermission();
+        if (result === "granted") attachCompass();
+      } catch (err) {
+        console.error('Compass permission error:', err);
+      }
     } else {
-      window.addEventListener("deviceorientation", handleOrientation, true);
+      attachCompass();
     }
   }
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const DevOrient = DeviceOrientationEvent as any;
-    if (typeof DevOrient.requestPermission === "function") {
-      if (!localStorage.getItem("compassPermissionAsked")) {
-        localStorage.setItem("compassPermissionAsked", "true");
-        setShowCompassModal(true);
-      } else if (localStorage.getItem("compassPermissionGranted") === "true") {
-        startCompass();
-      }
+    if (typeof DevOrient.requestPermission !== "function") {
+      attachCompass();
     } else {
-      startCompass();
+      const saved = localStorage.getItem('earlybird_compass_enabled');
+      if (saved === 'true') {
+        DevOrient.requestPermission()
+          .then((result: string) => { if (result === "granted") attachCompass(); })
+          .catch(() => {});
+      }
     }
     return () => {
-      if (handleOrientationRef.current) window.removeEventListener("deviceorientation", handleOrientationRef.current, true);
+      if (handleOrientationRef.current) {
+        window.removeEventListener("deviceorientation", handleOrientationRef.current, true);
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function goToCurrentLocation() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map = (window as any)._earlybirdMap;
+    if (map && center) map.setView(center, 16);
+  }
+
   return (
-    <>
-      {showCompassModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-          <div style={{ background: "white", borderRadius: "16px", padding: "24px", maxWidth: "320px", width: "100%", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.3)" }}>
-            <div style={{ fontSize: "48px", marginBottom: "12px" }}>🧭</div>
-            <h2 style={{ fontSize: "18px", fontWeight: "bold", color: "#7c2d12", marginBottom: "8px" }}>方向ビームを使いますか？</h2>
-            <p style={{ fontSize: "14px", color: "#666", marginBottom: "24px", lineHeight: "1.6" }}>スマホの向きを検知して、現在地から進行方向にビームを表示します。</p>
-            <button onClick={() => { localStorage.setItem("compassPermissionGranted", "true"); setShowCompassModal(false); startCompass(); }}
-              style={{ width: "100%", padding: "12px", marginBottom: "8px", background: "#7c2d12", color: "white", border: "none", borderRadius: "8px", fontSize: "16px", fontWeight: "bold", cursor: "pointer" }}>🧭 許可する</button>
-            <button onClick={() => setShowCompassModal(false)}
-              style={{ width: "100%", padding: "10px", background: "transparent", color: "#999", border: "none", borderRadius: "8px", fontSize: "14px", cursor: "pointer" }}>使わない</button>
-          </div>
-        </div>
-      )}
+    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <MapContainer center={center} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={true}>
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapInit center={center} />
@@ -135,7 +150,9 @@ export default function EarlybirdMap({ restaurants, center, bookmarks, intereste
           iconCreateFunction={(cluster: { getChildCount: () => number; getAllChildMarkers: () => L.Marker[] }) => {
             const count = cluster.getChildCount();
             const markers = cluster.getAllChildMarkers();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hasInterested = markers.some(m => interested.has((m.options as any).restaurantId));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hasBookmark = markers.some(m => bookmarks.has((m.options as any).restaurantId));
             const bg = hasInterested ? '#ea580c' : hasBookmark ? '#fbbf24' : '#7c2d12';
             return L.divIcon({
@@ -150,6 +167,7 @@ export default function EarlybirdMap({ restaurants, center, bookmarks, intereste
             const isBookmarked = bookmarks.has(restaurant.id);
             const icon = isInterested ? interestedIcon : isBookmarked ? bookmarkIcon : defaultIcon;
             return (
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               <Marker key={restaurant.id} position={[restaurant.latitude, restaurant.longitude]} icon={icon} {...{ restaurantId: restaurant.id } as any}>
                 <Popup>
                   <div style={{ minWidth: "180px" }}>
@@ -172,6 +190,34 @@ export default function EarlybirdMap({ restaurants, center, bookmarks, intereste
           })}
         </MarkerClusterGroup>
       </MapContainer>
-    </>
+
+      {/* コンパスボタン */}
+      {!compassEnabled && (
+        <button
+          onClick={enableCompass}
+          style={{
+            position: 'absolute', bottom: 80, right: 12, zIndex: 1000,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'white', border: '2px solid #7c2d12',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)', cursor: 'pointer',
+            fontSize: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          title="コンパスを有効化"
+        >🧭</button>
+      )}
+
+      {/* 現在地ボタン */}
+      <button
+        onClick={goToCurrentLocation}
+        style={{
+          position: 'absolute', bottom: 32, right: 12, zIndex: 1000,
+          width: 44, height: 44, borderRadius: '50%',
+          background: 'white', border: '2px solid #7c2d12',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)', cursor: 'pointer',
+          fontSize: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        title="現在地に戻る"
+      >📍</button>
+    </div>
   );
 }
