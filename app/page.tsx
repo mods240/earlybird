@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Map = dynamic(() => import("@/components/EarlybirdMap"), {
   ssr: false,
   loading: () => (
@@ -11,7 +12,7 @@ const Map = dynamic(() => import("@/components/EarlybirdMap"), {
       <p className="text-orange-800">🍢 地図を読み込み中...</p>
     </div>
   ),
-});
+}) as any;
 
 interface Restaurant {
   id: number;
@@ -498,10 +499,10 @@ export default function Home() {
         ) : view === "map" ? (
           <div className="h-full relative">
             <Map
-              restaurants={restaurants}
+              restaurants={restaurants as any}
               center={center}
-              bookmarks={bookmarks}
-              interested={interested}
+              bookmarks={bookmarks as any}
+              interested={interested as any}
               onToggleBookmark={toggleBookmark}
               onToggleInterested={toggleInterested}
             />
