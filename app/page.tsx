@@ -486,7 +486,7 @@ export default function Home() {
         ) : view === "map" ? (
           <div className="h-full">
             <Map
-              restaurants={restaurants}
+             restaurants={restaurants as any}
               center={center}
               bookmarks={bookmarks}
               interested={interested}
