@@ -454,9 +454,12 @@ export default function Home() {
           <h1 className="text-xl font-bold">🍢 アーリーバード</h1>
           <p className="text-xs text-orange-300">タップでエリア変更</p>
         </button>
-        <p className="text-xs text-orange-200">
-          {loading ? "読込中..." : `${restaurants.length}件`}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-orange-200">
+            {loading ? "読込中..." : `${restaurants.length}件`}
+          </p>
+          <a href="/about" className="text-xs text-orange-200 border border-orange-300 rounded-full px-2 py-0.5 no-underline">ℹ️ about</a>
+        </div>
       </header>
 
       {nearbyAlert && (
